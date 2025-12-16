@@ -13,6 +13,9 @@ preprocess_data = preprocess_module.preprocess_data
 
 df = preprocess_data("data/data.xlsx")
 
+"""
+开始 1.1 
+"""
 # 1. 只保留“完成的工序记录”
 df_finished = df[df["is_finished"]].copy()
 
