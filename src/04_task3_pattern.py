@@ -139,6 +139,67 @@ def cluster_operator_behavior(df, k=3):
     return features
 
 
+# ======================
+# Task 3.3
+# ======================
+def plot_receive_submit_time_heatmap(df):
+    """
+    Task 3.3: Receive vs Submit time-of-day heatmap
+    """
+
+    # ---------- Step 1：只保留完成记录 ----------
+    df_valid = df[df["is_finished"]].copy()
+
+    # ---------- Step 2：提取小时 ----------
+    df_valid["receive_hour"] = df_valid["dUPDATE_TIME"].dt.hour
+    df_valid["submit_hour"] = df_valid["dNODE_TIME"].dt.hour
+
+    # ---------- Step 3：统计小时分布 ----------
+    receive_count = (
+        df_valid
+        .groupby("receive_hour")
+        .size()
+        .reindex(range(24), fill_value=0)
+    )
+
+    submit_count = (
+        df_valid
+        .groupby("submit_hour")
+        .size()
+        .reindex(range(24), fill_value=0)
+    )
+
+    # ---------- Step 4：构建热力矩阵 ----------
+    heatmap_data = pd.DataFrame(
+        {
+            "Receive": receive_count,
+            "Submit": submit_count
+        }
+    ).T  # 行为 × 小时
+
+    # ---------- Step 5：绘制热力图 ----------
+    plt.figure(figsize=(12, 3))
+    plt.imshow(heatmap_data, aspect="auto")
+
+    plt.colorbar(label="Number of Records")
+    plt.yticks([0, 1], ["Receive", "Submit"])
+    plt.xticks(range(24), range(24))
+    plt.xlabel("Hour of Day")
+    plt.title("Receive vs Submit Time-of-Day Heatmap")
+
+    plt.tight_layout()
+
+    # ---------- Step 6：保存 ----------
+    output_dir = Path("result/figures")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(
+        output_dir / "task3_3_receive_submit_heatmap.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+    plt.close()
+
+
 if __name__ == "__main__":
     df = preprocess_data("data/data.xlsx")
 
@@ -147,3 +208,6 @@ if __name__ == "__main__":
 
     print("Running Task 3.2...")
     cluster_operator_behavior(df)
+
+    print("Running Task 3.3...")
+    plot_receive_submit_time_heatmap(df)
