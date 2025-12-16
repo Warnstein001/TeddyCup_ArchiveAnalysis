@@ -116,8 +116,66 @@ top3 = (
     .head(3)
 )
 
+
+""""
+在这一步已经完成了1.1
+"""
 # 7. 保存结果（题目明确要求）
 result_table.to_excel(
     "result/result1_1.xlsx",
+    index=False
+)
+
+"""
+开始1.2
+"""
+
+# 1. 找出返工案卷（案卷级）
+# 只看完成四道工序的案卷
+df_completed = df[df["sARCH_ID"].isin(completed_archives)]
+
+# 案卷级是否返工
+rework_archives = (
+    df_completed[df_completed["is_rework"]]
+    ["sARCH_ID"]
+    .unique()
+)
+
+num_rework_archives = len(rework_archives)
+
+# 2. 计算返工案卷占比
+rework_ratio = num_rework_archives / len(completed_archives) * 100
+rework_ratio = round(rework_ratio, 3)
+
+# ---- 构造题目要求的「表 2」 ----
+# 3. 只保留返工案卷的记录
+df_rework = df_completed[df_completed["sARCH_ID"].isin(rework_archives)]
+
+# 4. 提取“返工工序 + 返工时间”
+
+"""
+返工时间 = dPROC_TIME
+一个工序 最多只保留一次返工时间
+如果有多次返工 → 取最早（稳妥）
+"""
+rework_summary = (
+    df_rework[df_rework["is_rework"]]
+    .groupby(["sARCH_ID", "工序"])
+    .agg(
+        rework_time=("dPROC_TIME", "min")
+    )
+    .reset_index()
+)
+
+# 5. 变成“案卷 × 工序”的宽表
+table2 = rework_summary.pivot(
+    index="sARCH_ID",
+    columns="工序",
+    values="rework_time"
+).reset_index()
+
+# 6. 保存 result1_2.xlsx
+table2.to_excel(
+    "result/result1_2.xlsx",
     index=False
 )
