@@ -301,3 +301,71 @@ table4.to_excel(
     "result/result1_4.xlsx",
     index=False
 )
+
+"""
+开始 1.5
+"""
+# 1. 只保留完成记录
+df_f = df[df["is_finished"]].copy()
+
+# 2. 计算「人员 × 工序」完成案卷数量
+archive_count = (
+    df_f
+    .groupby(["iUSER_ID", "工序"])["sARCH_ID"]
+    .nunique()
+    .reset_index(name="完成案卷的数量")
+)
+
+# 3. 计算「人员 × 工序 × 批次」的批次时长（核心）
+
+# 3.1 聚合批次时间区间
+batch_time = (
+    df_f
+    .groupby(["iUSER_ID", "工序", "sBatch_number"])
+    .agg(
+        batch_start=("dUPDATE_TIME", "min"),
+        batch_end=("dNODE_TIME", "max")
+    )
+    .reset_index()
+)
+
+# 3.2 计算每个批次的有效工作时长
+batch_time["batch_hours"] = batch_time.apply(
+    lambda row: calc_work_hours(
+        row["batch_start"],
+        row["batch_end"]
+    ),
+    axis=1
+)
+
+# 4. 汇总为「人员 × 工序」工作时长
+work_time = (
+    batch_time
+    .groupby(["iUSER_ID", "工序"])["batch_hours"]
+    .sum()
+    .reset_index(name="工作时长 (h)")
+)
+
+work_time["工作时长 (h)"] = work_time["工作时长 (h)"].round(3)
+
+# 5. 合并并计算平均耗时
+result = archive_count.merge(
+    work_time,
+    on=["iUSER_ID", "工序"],
+    how="left"
+)
+
+result["每个案卷的平均耗时 (h/卷)"] = (
+    result["工作时长 (h)"] / result["完成案卷的数量"]
+).round(3)
+
+# 6. 排序并保存 result1_5.xlsx
+table5 = result.sort_values(
+    by=["iUSER_ID", "工序"]
+)
+
+table5.to_excel(
+    "result/result1_5.xlsx",
+    index=False
+)
+
