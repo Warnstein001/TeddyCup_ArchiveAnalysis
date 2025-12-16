@@ -3,6 +3,7 @@
 import pandas as pd
 import importlib.util
 import os
+from utils import calc_work_hours
 
 # 动态导入 01_preprocess.py 模块
 spec = importlib.util.spec_from_file_location("preprocess", os.path.join(os.path.dirname(__file__), "01_preprocess.py"))
@@ -230,3 +231,73 @@ table3.to_excel(
     index=False
 )
 
+""""
+开始 1.4
+"""
+
+# 1. 先只保留“完成记录”
+df_f = df[df["is_finished"]].copy()
+
+# 2. 统计每个工序完成案卷数量
+archive_count = (
+    df_f
+    .groupby("工序")["sARCH_ID"]
+    .nunique()
+    .reset_index(name="完成案卷的数量")
+)
+
+# 3. 按「工序 + 批次」计算批次耗时（核心）
+
+# 3.1 先聚合出批次时间区间
+batch_time = (
+    df_f
+    .groupby(["工序", "sBatch_number"])
+    .agg(
+        batch_start=("dUPDATE_TIME", "min"),
+        batch_end=("dNODE_TIME", "max")
+    )
+    .reset_index()
+)
+
+# 3.2 对每个批次计算“有效工作时长”
+batch_time["batch_hours"] = batch_time.apply(
+    lambda row: calc_work_hours(
+        row["batch_start"],
+        row["batch_end"]
+    ),
+    axis=1
+)
+
+# 4. 按工序汇总“总耗时”
+total_hours = (
+    batch_time
+    .groupby("工序")["batch_hours"]
+    .sum()
+    .reset_index(name="总耗时 (h)")
+)
+
+total_hours["总耗时 (h)"] = total_hours["总耗时 (h)"].round(3)
+
+# 5. 合并并计算平均耗时
+result = archive_count.merge(
+    total_hours,
+    on="工序",
+    how="left"
+)
+
+result["平均耗时 (h/卷)"] = (
+    result["总耗时 (h)"] / result["完成案卷的数量"]
+).round(3)
+
+# 6. 整理并保存 result1_4.xlsx
+table4 = result[[
+    "工序",
+    "完成案卷的数量",
+    "总耗时 (h)",
+    "平均耗时 (h/卷)"
+]]
+
+table4.to_excel(
+    "result/result1_4.xlsx",
+    index=False
+)
