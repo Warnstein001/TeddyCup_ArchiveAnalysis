@@ -1,0 +1,123 @@
+# src/02_task1_statistics.py
+
+import pandas as pd
+import importlib.util
+import os
+
+# 动态导入 01_preprocess.py 模块
+spec = importlib.util.spec_from_file_location("preprocess", os.path.join(os.path.dirname(__file__), "01_preprocess.py"))
+preprocess_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(preprocess_module)
+preprocess_data = preprocess_module.preprocess_data
+
+df = preprocess_data("data/data.xlsx")
+
+# 1. 只保留“完成的工序记录”
+df_finished = df[df["is_finished"]].copy()
+
+# 2. 找出“完成四道工序的案卷”
+
+# 2.1 按案卷 + 工序去重
+arch_flow = (
+    df_finished
+    .groupby(["sARCH_ID", "工序"])
+    .size()
+    .reset_index(name="cnt")
+)
+
+# 2.2 统计每个案卷完成了多少种工序
+flow_count = (
+    arch_flow
+    .groupby("sARCH_ID")["工序"]
+    .nunique()
+    .reset_index(name="flow_num")
+)
+
+# 2.3 只保留完成 4 道工序的案卷
+completed_archives = flow_count[flow_count["flow_num"] == 4]["sARCH_ID"]
+
+# --- 任务 1.1 完成四道工序的案卷数量
+num_completed_archives = completed_archives.nunique()
+
+# 3. 汇总每个案卷 × 工序的开始 / 结束时间
+
+# 3.1 只保留“完成四道工序”的案卷
+df_valid = df_finished[df_finished["sARCH_ID"].isin(completed_archives)]
+
+
+"""
+这一步解决了：“同一案卷 + 同一工序多条记录怎么办？”
+> 用 最早开始 + 最晚结束
+"""
+# 3.2 对每个案卷 × 工序汇总时间
+flow_time_summary = (
+    df_valid
+    .groupby(["sARCH_ID", "工序"])
+    .agg(
+        start_time=("dUPDATE_TIME", "min"),
+        end_time=("dNODE_TIME", "max")
+    )
+    .reset_index()
+)
+
+# 4. 把“长表”变成题目要求的“宽表（表 1）
+
+# 4.1 透视成宽表
+table = flow_time_summary.pivot(
+    index="sARCH_ID",
+    columns="工序",
+    values=["start_time", "end_time"]
+)
+
+# 4.2 整理列名（为了导 Excel 和写报告）
+table.columns = [
+    f"{flow}_{t}"
+    for t, flow in table.columns
+]
+
+table = table.reset_index()
+
+# 5. 计算案卷完成时长（任务 1.1 的核心）
+
+# 5.1 先算“工序级耗时”（只算 3 个工序）
+valid_flows = ["扫描", "图像处理", "自检全检"]
+
+flow_hours = (
+    df_valid[df_valid["工序"].isin(valid_flows)]
+    .groupby(["sARCH_ID", "工序"])["work_hours"]
+    .sum()
+    .reset_index()
+)
+
+# 5.2 汇总为“案卷完成时长”
+archive_hours = (
+    flow_hours
+    .groupby("sARCH_ID")["work_hours"]
+    .sum()
+    .reset_index(name="完成时长")
+)
+
+archive_hours["完成时长"] = archive_hours["完成时长"].round(3)
+
+"""
+这一步结束，已经得到了 完整的表 1
+"""
+# 5.3 合并回表 1
+result_table = table.merge(
+    archive_hours,
+    on="sARCH_ID",
+    how="left"
+)
+
+# 6. 找出完成时长最长的 3 个案卷
+top3 = (
+    result_table
+    .sort_values("完成时长", ascending=False)
+    .head(3)
+)
+
+# 7. 保存结果（题目明确要求）
+result_table.to_excel(
+    "result/result1_1.xlsx",
+    index=False
+)
