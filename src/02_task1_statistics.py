@@ -179,3 +179,54 @@ table2.to_excel(
     "result/result1_2.xlsx",
     index=False
 )
+
+"""
+开始 1.3
+"""
+
+# 1. 只取「自检全检」工序的数据
+df_check = df_completed[df_completed["工序"] == "自检全检"].copy()
+
+# 2. 计算每个操作人员的“自检全检案卷总数”
+total_archives = (
+    df_check
+    .groupby("iUSER_ID")["sARCH_ID"]
+    .nunique()
+    .reset_index(name="total_archives")
+)
+
+# 3. 计算每个操作人员的“返工案卷数”
+rework_archives = (
+    df_check[df_check["is_rework"]]
+    .groupby("iUSER_ID")["sARCH_ID"]
+    .nunique()
+    .reset_index(name="rework_archives")
+)
+
+# 4. 合并并计算返工占比
+result = total_archives.merge(
+    rework_archives,
+    on="iUSER_ID",
+    how="left"
+)
+
+# 没有返工的人员，返工数为 0
+result["rework_archives"] = result["rework_archives"].fillna(0)
+
+result["返工案卷占比 (%)"] = (
+    result["rework_archives"] / result["total_archives"] * 100
+).round(3)
+
+# 5. 排序并输出表 3
+result_sorted = result.sort_values(
+    "返工案卷占比 (%)",
+    ascending=False
+)
+
+table3 = result_sorted[["iUSER_ID", "返工案卷占比 (%)"]]
+
+table3.to_excel(
+    "result/result1_3.xlsx",
+    index=False
+)
+
