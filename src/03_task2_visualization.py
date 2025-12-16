@@ -248,6 +248,101 @@ def plot_task2_3_daily_rework_ratio(df):
     )
     plt.close()
 
+# ======================
+# Task 2.4
+# ======================
+def plot_task2_4_image_user_rework_pie(df, top_n=8):
+    """
+    图像处理工序 —— 操作人员返工占比（饼图）
+    输出：result/figures/task2_4.png
+    """
+
+    # ---------- Step 1：只保留完成记录 ----------
+    df_finished = df[df["is_finished"]].copy()
+
+    # ---------- Step 2：限定工序为“图像处理” ----------
+    df_img = df_finished[df_finished["工序"] == "图像处理"].copy()
+
+    # ---------- Step 3：统计每个操作人员的完成案卷数（分母） ----------
+    total_cases = (
+        df_img
+        .groupby("iUSER_ID")["sARCH_ID"]
+        .nunique()
+        .reset_index(name="total_cases")
+    )
+
+    # ---------- Step 4：统计每个操作人员的返工案卷数（分子） ----------
+    rework_cases = (
+        df_img[df_img["is_rework"]]
+        .groupby("iUSER_ID")["sARCH_ID"]
+        .nunique()
+        .reset_index(name="rework_cases")
+    )
+
+    # ---------- Step 5：合并并计算返工占比 ----------
+    user_ratio = pd.merge(
+        total_cases,
+        rework_cases,
+        on="iUSER_ID",
+        how="left"
+    )
+
+    user_ratio["rework_cases"] = user_ratio["rework_cases"].fillna(0)
+    user_ratio["rework_ratio"] = user_ratio["rework_cases"] / user_ratio["total_cases"]
+
+    # ---------- Step 6：按返工案卷数排序，取 Top N ----------
+    user_ratio_sorted = user_ratio.sort_values(
+        by="rework_cases",
+        ascending=False
+    )
+
+    top_users = user_ratio_sorted.head(top_n)
+    others = user_ratio_sorted.iloc[top_n:]
+
+    # 合并 Others
+    if not others.empty:
+        others_row = pd.DataFrame({
+            "iUSER_ID": ["Others"],
+            "total_cases": [others["total_cases"].sum()],
+            "rework_cases": [others["rework_cases"].sum()],
+            "rework_ratio": [others["rework_cases"].sum() / max(others["total_cases"].sum(), 1)]
+        })
+        pie_data = pd.concat([top_users, others_row], ignore_index=True)
+    else:
+        pie_data = top_users.copy()
+
+    # ---------- Step 7：准备饼图数据 ----------
+    labels = pie_data["iUSER_ID"].astype(str)
+    sizes = pie_data["rework_cases"]
+
+    # 如果全为 0，避免报错
+    if sizes.sum() == 0:
+        print("No rework cases found in Image Processing. Pie chart not generated.")
+        return
+
+    # ---------- Step 8：作图 ----------
+    plt.figure(figsize=(8, 8))
+    plt.pie(
+        sizes,
+        labels=labels,
+        autopct="%1.1f%%",
+        startangle=140
+    )
+    plt.title("Rework Distribution by Operator (Image Processing)")
+    plt.axis("equal")  # 保证为正圆
+
+    # ---------- Step 9：保存图片 ----------
+    output_dir = Path("result/figures")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    plt.savefig(
+        output_dir / "task2_4.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+    plt.close()
+
+
 
 # ======================
 # main
@@ -266,3 +361,6 @@ if __name__ == "__main__":
 
     print("Generating Task 2.3 figure...")
     plot_task2_3_daily_rework_ratio(df)
+    
+    print("Generating Task 2.4 figure...")
+    plot_task2_4_image_user_rework_pie(df, top_n=8)
